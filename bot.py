@@ -98,13 +98,8 @@ async def on_message(message):
                     channel = bot.get_channel(channel_id)
                     if channel:
                         # тут короче один костыль который похоже не пофиксить
-                        sent_message = await channel.send(tenor_url) # гифка отправляется отдельным сообщением
-                        embed_message = await channel.send(embed=embed) # и при большом потоке сообщений может получится каша, и бот просто отправит гифку и чуть позже ембед
-                        # добавление сообщений в словарь
-                        messages[message.id].append((channel_id, sent_message.id))
-                        messages[message.id].append((channel_id, embed_message.id))
-            message_counter += 1
-            await clear_messages()
+                        await channel.send(tenor_url) # гифка отправляется отдельным сообщением
+                        await channel.send(embed=embed) # и при большом потоке сообщений может получится каша, и бот просто отправит гифку и чуть позже ембед
             return
 
         if message.attachments: # если у сообщения есть вложения (фото, видео, файлы)
@@ -115,11 +110,7 @@ async def on_message(message):
                     if channel_id != message.channel.id:
                         channel = bot.get_channel(channel_id)
                         if channel:
-                            sent_message = await channel.send(file=file, embed=embed)
-                            # добавление сообщения в словарь
-                            messages[message.id].append((channel_id, sent_message.id))
-                message_counter += 1
-                await clear_messages()
+                            await channel.send(file=file, embed=embed)
                 return
 
         messages[message.id] = []
