@@ -1,5 +1,7 @@
 # GlobalReborn
 
+![](https://github.com/seriouslych/global-reborn/blob/main/gb_banner.png?raw=true)
+
 ### EN:
 
 **GlobalReborn** - is a Discord bot that send messages, files and gifs all around different servers that have this bot.
