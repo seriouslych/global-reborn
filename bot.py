@@ -42,10 +42,10 @@ global_chat_channels = []
 messages = {}
 message_counter = 0 # счетчик сообщений
 
-# переменная которая служит переключателем цвета (чтобы были цвета флага Беларуси)
+# переменная которая служит переключателем цвета (чтобы были цвета с флага Беларуси)
 # 🔴
 # 🟢
-current_color_is_red = True
+color = True
 
 # подключение к базе данных
 conn, c = database.connect_db()
@@ -67,12 +67,12 @@ async def on_message(message):
         return
     
     # передача переменных
-    global current_color_is_red
+    global color
     global message_counter
 
     if message.channel.id in global_chat_channels: # если канал в списке зарег. каналов:
-        embed_color = discord.Color.red() if current_color_is_red else discord.Color.green() # та самая смена цветов :)
-        current_color_is_red = not current_color_is_red
+        embed_color = discord.Color.from_str('#ce1720') if color else discord.Color.from_str('#007c30') # та самая смена цветов :)
+        color = not color
         
         embed = discord.Embed(color=embed_color)
         # автор сообщения и его ID в скобках
