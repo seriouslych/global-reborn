@@ -4,6 +4,9 @@ from discord.ext import commands
 from dotenv import load_dotenv
 import database
 
+# global.py
+# файл с функционалом глобал-чата
+
 """
 ============= GlobalReborn ==============
 EN:
@@ -34,6 +37,9 @@ intents.message_content = True
 
 # инициализация бота
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# массив где хранятся все ссылки хостингов гифок и изображений
+gif_hostings = ["https://tenor.com/view", "https://media1.tenor.com/m/", "https://media.discordapp.net/attachments/", "https://i.imgur.com/"]
 
 # массив где загружается весь список серверов в память
 global_chat_channels = []
@@ -69,6 +75,7 @@ async def on_message(message):
     # передача переменных
     global color
     global message_counter
+    global gif_hostings
 
     if message.channel.id in global_chat_channels: # если канал в списке зарег. каналов:
         embed_color = discord.Color.from_str('#ce1720') if color else discord.Color.from_str('#007c30') # та самая смена цветов :)
@@ -89,8 +96,8 @@ async def on_message(message):
         if message.content: # если сообщение имеет текст:
             embed.description = message.content
         
-        if "https://tenor.com/view/" in message.content: # если сообщение гифка (или иное изображение)
-            tenor_url = message.content.strip()
+        if any(hosting in message.content for hosting in gif_hostings): # если сообщение гифка (или иное изображение)
+            gif_url = message.content.strip()
             embed.description = None
 
             for channel_id in global_chat_channels:
@@ -98,7 +105,7 @@ async def on_message(message):
                     channel = bot.get_channel(channel_id)
                     if channel:
                         # тут короче один костыль который похоже не пофиксить
-                        await channel.send(tenor_url) # гифка отправляется отдельным сообщением
+                        await channel.send(gif_url) # гифка отправляется отдельным сообщением
                         await channel.send(embed=embed) # и при большом потоке сообщений может получится каша, и бот просто отправит гифку и чуть позже ембед
             return
 
