@@ -41,10 +41,10 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 # мой айди в дискорд (для использовании команды без каких либо прав на сервере)
-creator_id = ['670627088729899008']
+creator_id = [670627088729899008]
 
 # массив где хранятся все ссылки хостингов гифок и изображений
-gif_hostings = ["https://tenor.com/view", "https://media1.tenor.com/m/", "https://media.discordapp.net/attachments/", "https://i.imgur.com/", "https://images-ext-1.discordapp.net/external/", "https://imgur.com/"]
+gif_hostings = ["https://tenor.com/view", "https://media1.tenor.com/m/", "https://media.discordapp.net/attachments/", "https://i.imgur.com/", "https://images-ext-1.discordapp.net/external/", "https://imgur.com/", "https://cdn.discordapp.com/attachments/"]
 
 # массив где загружается весь список серверов в память
 global_chat_channels = []
