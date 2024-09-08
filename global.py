@@ -1,8 +1,12 @@
 import os
-import discord
-from discord.ext import commands
-from dotenv import load_dotenv
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) # возможность импорта из директории выше (чтобы не копировать файл)
 import database
+
+import discord
+from discord import app_commands
+from discord.ext import commands, tasks
+from dotenv import load_dotenv
 
 # global.py
 # файл с функционалом глобал-чата
@@ -24,7 +28,6 @@ TODO:
 - Систему администрирования (мьюты и баны)
 - Систему логирования
 - Команду help
-- Определение других хостингов кроме Tenor
 """
 
 # загрузка токена с .env файла
@@ -36,10 +39,13 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 # инициализация бота
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+
+# мой айди в дискорд (для использовании команды без каких либо прав на сервере)
+creator_id = ['670627088729899008']
 
 # массив где хранятся все ссылки хостингов гифок и изображений
-gif_hostings = ["https://tenor.com/view", "https://media1.tenor.com/m/", "https://media.discordapp.net/attachments/", "https://i.imgur.com/"]
+gif_hostings = ["https://tenor.com/view", "https://media1.tenor.com/m/", "https://media.discordapp.net/attachments/", "https://i.imgur.com/", "https://images-ext-1.discordapp.net/external/", "https://imgur.com/"]
 
 # массив где загружается весь список серверов в память
 global_chat_channels = []
@@ -56,14 +62,54 @@ color = True
 # подключение к базе данных
 conn, c = database.connect_db()
 
+def user_check():
+    def predicate(interaction):
+        return interaction.user.id in creator_id or interaction.user.guild_permissions.administrator
+    return app_commands.check(predicate)
+
+# получение списка серверов из базы данных
+def load_registered_guilds():
+    return database.get_all_registered_guilds(conn)
+
+@tasks.loop(minutes=3)  # моментальная сихнронизация со всеми серверами каждые 3 минуты
+async def sync_commands_periodically():
+    print("Начата периодическая синхронизация команд...")
+    registered_guilds = load_registered_guilds()  # загружаем зарегистрированные серверы из базы данных
+    
+    # снхронизация команд для каждого сервера в базе данных
+    for guild_id in registered_guilds:
+        guild = discord.Object(id=guild_id)
+        try:
+            await bot.tree.sync(guild=guild)
+            print(f"Команды синхронизированы для сервера {guild_id}")
+        except Exception as e:
+            print(f"Ошибка синхронизации для сервера {guild_id}: {e}")
+
+    # глобальная синхронизация для всех серверов (на всякий случай)
+    try:
+        await bot.tree.sync()
+        print("Глобальная синхронизация завершена")
+    except Exception as e:
+        print(f"Ошибка глобальной синхронизации: {e}")
+
 @bot.event
 # функция которая инициализируется при загрузке бота 
-# здесь происходит загрузка данных с бд и уведомление о инициализации бота
+# здесь происходит загрузка данных с бд, синхронизация команд с серверами и уведомление о инициализации бота
 async def on_ready():
-    print(f"Logged in as {bot.user.name} ({bot.user.id})")
+    print(f"Бот запущен как {bot.user.name} ({bot.user.id})")
+    
+    # запускаем периодическую задачу синхронизации
+    sync_commands_periodically.start()
 
-    global global_chat_channels
-    global_chat_channels = database.load_global_chat_channels(conn)
+@bot.event
+async def on_guild_join(guild):
+    # когда бот добавляется на новый сервер, он добавляем сервер в базу данных
+    database.add_guild(conn, guild.id, guild.name)
+    print(f"Сервер {guild.name} ({guild.id}) добавлен в базу данных.")
+    
+    # моментальная синхронизация команд для нового сервера
+    await bot.tree.sync(guild=discord.Object(id=guild.id))
+    print(f"Синхронизированы команды для сервера {guild.id}")
 
 @bot.event
 # самая главная функция бота
@@ -172,21 +218,58 @@ async def on_message_delete(message): # тут происходит удален
                 except discord.NotFound:
                     pass 
 
-@bot.command()
-@commands.has_permissions(administrator=True) # ПРАВА АДМИНИСТРАТОРА - ВРЕМЕННО
-async def gc(ctx, channel: discord.TextChannel): # Команда - gc - добавляет в бд канал где будут отправляться сообщения (временное название)
+# команда помощи
+@bot.tree.command(name='help', description='Показывает список команд и информацию о боте')
+async def help_command(interaction: discord.Interaction):
+    commands_list = """/gc `#канал` - Добавление канала для глобал чата
+    /gcr `#канал` - Удаление канала для глобал чата (не удаляет сам канал)
+    """
+
+    embed = discord.Embed(color=discord.Color.blue())
+    
+    embed.set_author(
+        name=f"{bot.user.name} - Помощь",
+        icon_url=bot.user.avatar.url if bot.user.avatar else None
+    )
+
+    embed.add_field(name="⚒️ Список команд:", 
+                    value=commands_list,
+                    inline=False)
+
+    embed.add_field(
+        name="*Примечание - эти команды доступны только администраторам сервера.",
+        value="",
+        inline=False
+    )
+    
+    embed.add_field(
+        name=f"🤖 О {bot.user.name}:",
+        value=f"{bot.user.name} - это Discord бот, который отправляет сообщения, файлы и гифки на разные серверы, у которых есть этот бот.\n\nСделано seriouslych (https://github.com/seriouslych)",
+        inline=False
+    )
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# команда для добавления канала в глобальный чат
+@bot.tree.command(name='gc', description='Добавление канала для глобал чата')
+@user_check()
+async def gc_command(interaction: discord.Interaction, channel: discord.TextChannel):
     global global_chat_channels
     global_chat_channels.append(channel.id)
-    database.add_global_chat(conn, ctx.guild.id, ctx.guild.name, channel.id)
-    await ctx.send(f"Канал {channel.mention} добавлен в глобальный чат.")
+    database.add_global_chat(conn, interaction.guild.id, interaction.guild.name, channel.id)
+    await interaction.response.send_message(f"Канал {channel.mention} добавлен в глобальный чат.", ephemeral=True)
 
-@bot.command()
-@commands.has_permissions(administrator=True) # ПРАВА АДМИНИСТРАТОРА - ВРЕМЕННО
-async def gcr(ctx, channel: discord.TextChannel): # Команда - gcr - удаляет из бд канал (временное название)
+# команда для удаления канала из глобального чата
+@bot.tree.command(name='gcr', description='Удаление канала из глобал чата')
+@user_check()
+async def gcr_command(interaction: discord.Interaction, channel: discord.TextChannel):
     global global_chat_channels
-    global_chat_channels.remove(channel.id)
-    database.remove_global_chat(conn, channel.id)
-    await ctx.send(f"Канал {channel.mention} удален из глобального чата.")
+    if channel.id in global_chat_channels:
+        global_chat_channels.remove(channel.id)
+        database.remove_global_chat(conn, channel.id)
+        await interaction.response.send_message(f"Канал {channel.mention} удален из глобального чата.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"Канал {channel.mention} не найден в глобальном чате.", ephemeral=True)
 
 bot.run(token) # запуск бота при помощи токена
  
