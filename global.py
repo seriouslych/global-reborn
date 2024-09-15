@@ -1,12 +1,11 @@
 import os
-import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) # возможность импорта из директории выше (чтобы не копировать файл)
 import database
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 # global.py
 # файл с функционалом глобал-чата
@@ -53,6 +52,7 @@ global_chat_channels = []
 messages = {}
 message_counter = 0 # счетчик сообщений
 
+
 # переменная которая служит переключателем цвета (чтобы были цвета с флага Беларуси)
 # 🔴
 # 🟢
@@ -61,16 +61,27 @@ color = True
 # подключение к базе данных
 conn, c = database.connect_db()
 
+# загрузка списков забаненных серверов и замьюченных пользователей
+banned_servers = database.get_banned_servers(conn)
+# словарь где хранится время мьюта пользователя
+# пример: {user_id: unmute_time}
+muted_users = database.get_muted_users(conn)
+
 def user_check():
     def predicate(interaction):
         return interaction.user.id in creator_id or interaction.user.guild_permissions.administrator
+    return app_commands.check(predicate)
+
+def mod_user_check():
+    def predicate(interaction):
+        return interaction.user.id in creator_id
     return app_commands.check(predicate)
 
 # получение списка серверов из базы данных
 def load_registered_guilds():
     return database.get_all_registered_guilds(conn)
 
-@tasks.loop(minutes=3)  # моментальная сихнронизация со всеми серверами каждые 3 минуты
+@tasks.loop(minutes=5)  # моментальная сихнронизация со всеми серверами каждые 5 минут
 async def sync_commands_periodically():
     print("Начата периодическая синхронизация команд...")
     registered_guilds = load_registered_guilds()  # загружаем зарегистрированные серверы из базы данных
@@ -91,14 +102,29 @@ async def sync_commands_periodically():
     except Exception as e:
         print(f"Ошибка глобальной синхронизации: {e}")
 
+@tasks.loop(minutes=1)
+async def check_mutes():
+    now = datetime.now()
+    to_unmute = [user_id for user_id, unmute_time in muted_users.items() if unmute_time <= now]
+
+    for user_id in to_unmute:
+        muted_users.pop(user_id)
+        database.unmute_user(conn, user_id) # размьют в бд если требуется
+
 @bot.event
 # функция которая инициализируется при загрузке бота 
 # здесь происходит загрузка данных с бд, синхронизация команд с серверами и уведомление о инициализации бота
 async def on_ready():
+    global global_chat_channels
+
     print(f"Бот запущен как {bot.user.name} ({bot.user.id})")
     
     # запускаем периодическую задачу синхронизации
     sync_commands_periodically.start()
+    # запускаем периодическую задачу проверки мьютов 
+    check_mutes.start()
+
+    global_chat_channels = database.load_global_chat_channels(conn)
 
 @bot.event
 async def on_guild_join(guild):
@@ -117,6 +143,15 @@ async def on_message(message):
     if message.author.bot: # если автор сообщения бот - не отправлять сообщение
         return
     
+    # проверка если сервер забанен
+    if str(message.guild.id) in banned_servers:
+        return
+    
+    # проверка если пользователь замьючен
+    if str(message.author.id) in muted_users and muted_users[str(message.author.id)] > datetime.now():
+        return
+
+
     # передача переменных
     global color
     global message_counter
@@ -134,7 +169,7 @@ async def on_message(message):
         )
         # сервер откуда это сообщение было отправлено
         embed.set_footer(
-            text=f"{message.guild.name}",
+            text=f"{message.guild.name} ({message.guild.id})",
             icon_url=message.guild.icon.url if message.guild.icon else None
         )
 
@@ -217,8 +252,8 @@ async def on_message_delete(message): # тут происходит удален
                 except discord.NotFound:
                     pass 
 
-# команда помощи
-@bot.tree.command(name='help', description='Показывает список команд и информацию о боте')
+# команда помощи/хелпа
+@bot.tree.command(name='хелп', description='Показывает список команд и информацию о боте')
 async def help_command(interaction: discord.Interaction):
     commands_list = """/gc `#канал` - Добавление канала для глобал чата
     /gcr `#канал` - Удаление канала для глобал чата (не удаляет сам канал)
@@ -250,7 +285,7 @@ async def help_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # команда для добавления канала в глобальный чат
-@bot.tree.command(name='gc', description='Добавление канала для глобал чата')
+@bot.tree.command(name='глобал_канал', description='Добавление канала для глобал чата')
 @user_check()
 async def gc_command(interaction: discord.Interaction, channel: discord.TextChannel):
     global global_chat_channels
@@ -259,7 +294,7 @@ async def gc_command(interaction: discord.Interaction, channel: discord.TextChan
     await interaction.response.send_message(f"Канал {channel.mention} добавлен в глобальный чат.", ephemeral=True)
 
 # команда для удаления канала из глобального чата
-@bot.tree.command(name='gcr', description='Удаление канала из глобал чата')
+@bot.tree.command(name='удалить_глобал_канал', description='Удаление канала из глобал чата')
 @user_check()
 async def gcr_command(interaction: discord.Interaction, channel: discord.TextChannel):
     global global_chat_channels
@@ -269,6 +304,53 @@ async def gcr_command(interaction: discord.Interaction, channel: discord.TextCha
         await interaction.response.send_message(f"Канал {channel.mention} удален из глобального чата.", ephemeral=True)
     else:
         await interaction.response.send_message(f"Канал {channel.mention} не найден в глобальном чате.", ephemeral=True)
+
+@bot.tree.command(name='бан_сервера', description='Банит сервер с ботом.')
+@mod_user_check()
+async def ban_server(interaction: discord.Interaction, server_id: str):
+    if server_id in banned_servers:
+        await interaction.response.send_message(f"Сервер {server_id} уже забанен.", ephemeral=True)
+        return
+
+    banned_servers.append(server_id)
+    database.ban_server(conn, server_id)
+    await interaction.response.send_message(f"Сервер {server_id} забанен", ephemeral=False)
+
+@bot.tree.command(name='разбан_сервера', description='Разбанивает сервер с ботом.')
+@mod_user_check()
+async def unban_server(interaction: discord.Interaction, server_id: str):
+    if server_id not in banned_servers:
+        await interaction.response.send_message(f"Сервер {server_id} не был забанен.", ephemeral=True)
+        return
+
+    banned_servers.remove(server_id)
+    database.unban_server(conn, server_id)
+    await interaction.response.send_message(f"Сервер {server_id} разбанен.", ephemeral=False)
+
+@bot.tree.command(name='мьют', description='Мьютит пользователя на определённое время.')
+@mod_user_check()
+async def mute_user(interaction: discord.Interaction, user_id: str, duration: int):
+    if user_id in muted_users:
+        await interaction.response.send_message(f"Пользователь {user_id} уже замьючен.", ephemeral=True)
+        return
+
+    unmute_time = datetime.now() + timedelta(minutes=duration)
+    muted_users[user_id] = unmute_time
+    database.mute_user(conn, user_id)
+    await interaction.response.send_message(f"Пользователь {user_id} замьючен на {duration} минут.", ephemeral=False)
+
+@bot.tree.command(name='размьют', description='Размьютит пользователя.')
+@mod_user_check()
+async def unmute_user(interaction: discord.Interaction, user_id: str):
+    if user_id in muted_users:
+        muted_users.pop(user_id)  # удаляем пользователя из словаря
+        database.unmute_user(conn, user_id)  # удаляем из базы данных
+        print(f"Пользователь {user_id} размьючен.")
+    else:
+        print(f"Пользователь {user_id} не найден в списке замьюченных.")
+
+    database.unmute_user(conn, user_id)
+    await interaction.response.send_message(f"Пользователь {user_id} размьючен.", ephemeral=False)
 
 bot.run(token) # запуск бота при помощи токена
  
