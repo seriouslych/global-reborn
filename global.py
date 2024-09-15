@@ -255,8 +255,8 @@ async def on_message_delete(message): # тут происходит удален
 # команда помощи/хелпа
 @bot.tree.command(name='хелп', description='Показывает список команд и информацию о боте')
 async def help_command(interaction: discord.Interaction):
-    commands_list = """/gc `#канал` - Добавление канала для глобал чата
-    /gcr `#канал` - Удаление канала для глобал чата (не удаляет сам канал)
+    commands_list = """/глобал_канал `#канал` - Добавление канала для глобал чата
+    /удалить_глобал_канал `#канал` - Удаление канала для глобал чата (не удаляет сам канал)
     """
 
     embed = discord.Embed(color=discord.Color.blue())
