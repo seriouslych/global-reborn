@@ -1,5 +1,4 @@
 import os
-import io
 import database
 
 import discord
@@ -193,19 +192,13 @@ async def on_message(message):
 
         if message.attachments: # если у сообщения есть вложения (фото, видео, файлы)
             for attachment in message.attachments:
-                # загрузка файла в оперативку
-                buffer = io.BytesIO(await attachment.read())
-                file = discord.File(fp=buffer, filename=attachment.filename)
-
+                # для каждого канала открываем файл заново и отправляем
                 for channel_id in global_chat_channels:
                     if channel_id != message.channel.id:
                         channel = bot.get_channel(channel_id)
                         if channel:
-                            await channel.send(file=file)
-                            await channel.send(embed=embed)
-
-                # удаление из памяти
-                buffer.close()
+                            file = await attachment.to_file()  # прямое чтение файла
+                            await channel.send(file=file, embed=embed)
             return
 
         messages[message.id] = []
@@ -286,7 +279,7 @@ async def help_command(interaction: discord.Interaction):
     
     embed.add_field(
         name=f"🤖 О {bot.user.name}:",
-        value=f"{bot.user.name} - это Discord бот, который отправляет сообщения, файлы и гифки на разные серверы, у которых есть этот бот.\n\nСделано seriouslych (https://github.com/seriouslych) - @seriously1488\n```v{BOT_VERSION}```",
+        value=f"{bot.user.name} - это Discord бот, который отправляет сообщения, файлы и гифки на разные серверы, у которых есть этот бот.\n\nСделано seriouslych (https://github.com/seriouslych) - @seriously1488\n`v{BOT_VERSION}`",
         inline=False
     )
 
