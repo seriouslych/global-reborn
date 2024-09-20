@@ -151,7 +151,6 @@ async def on_message(message):
     if str(message.author.id) in muted_users and muted_users[str(message.author.id)] > datetime.now():
         return
 
-
     # передача переменных
     global color
     global message_counter
@@ -197,7 +196,8 @@ async def on_message(message):
                     if channel_id != message.channel.id:
                         channel = bot.get_channel(channel_id)
                         if channel:
-                            await channel.send(file=file, embed=embed)
+                            await channel.send(file=file)
+                            await channel.send(embed=embed)
                 return
 
         messages[message.id] = []
@@ -278,7 +278,7 @@ async def help_command(interaction: discord.Interaction):
     
     embed.add_field(
         name=f"🤖 О {bot.user.name}:",
-        value=f"{bot.user.name} - это Discord бот, который отправляет сообщения, файлы и гифки на разные серверы, у которых есть этот бот.\n\nСделано seriouslych (https://github.com/seriouslych)",
+        value=f"{bot.user.name} - это Discord бот, который отправляет сообщения, файлы и гифки на разные серверы, у которых есть этот бот.\n\nСделано seriouslych (https://github.com/seriouslych) - @seriously1488",
         inline=False
     )
 
