@@ -1,4 +1,5 @@
 import os
+import io
 import database
 
 import discord
@@ -38,6 +39,8 @@ intents.message_content = True
 
 # инициализация бота
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+
+BOT_VERSION = '1.3.3'
 
 # мой айди в дискорд (для использовании команды без каких либо прав на сервере)
 creator_id = [670627088729899008]
@@ -190,7 +193,9 @@ async def on_message(message):
 
         if message.attachments: # если у сообщения есть вложения (фото, видео, файлы)
             for attachment in message.attachments:
-                file = await attachment.to_file()
+                # загрузка файла в оперативку
+                buffer = io.BytesIO(await attachment.read())
+                file = discord.File(fp=buffer, filename=attachment.filename)
 
                 for channel_id in global_chat_channels:
                     if channel_id != message.channel.id:
@@ -198,7 +203,10 @@ async def on_message(message):
                         if channel:
                             await channel.send(file=file)
                             await channel.send(embed=embed)
-                return
+
+                # удаление из памяти
+                buffer.close()
+            return
 
         messages[message.id] = []
         for channel_id in global_chat_channels:
@@ -255,8 +263,8 @@ async def on_message_delete(message): # тут происходит удален
 # команда помощи/хелпа
 @bot.tree.command(name='хелп', description='Показывает список команд и информацию о боте')
 async def help_command(interaction: discord.Interaction):
-    commands_list = """/глобал_канал `#канал` - Добавление канала для глобал чата
-    /удалить_глобал_канал `#канал` - Удаление канала для глобал чата (не удаляет сам канал)
+    commands_list = """`/глобал_канал` `#канал` - Добавление канала для глобал чата
+    `/удалить_глобал_канал` `#канал` - Удаление канала для глобал чата (не удаляет сам канал)
     """
 
     embed = discord.Embed(color=discord.Color.blue())
@@ -278,7 +286,7 @@ async def help_command(interaction: discord.Interaction):
     
     embed.add_field(
         name=f"🤖 О {bot.user.name}:",
-        value=f"{bot.user.name} - это Discord бот, который отправляет сообщения, файлы и гифки на разные серверы, у которых есть этот бот.\n\nСделано seriouslych (https://github.com/seriouslych) - @seriously1488",
+        value=f"{bot.user.name} - это Discord бот, который отправляет сообщения, файлы и гифки на разные серверы, у которых есть этот бот.\n\nСделано seriouslych (https://github.com/seriouslych) - @seriously1488\n```v{BOT_VERSION}```",
         inline=False
     )
 
